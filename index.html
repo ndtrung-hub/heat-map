@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Heat map</title>
+    <link rel="stylesheet" type="text/css" href="./css/index.css" />
+    <script src="https://d3js.org/d3.v5.min.js" charset="utf-8"></script>
+    <script
+      type="text/javascript"
+      src="https://cdn.freecodecamp.org/testable-projects-fcc/v1/bundle.js"
+      defer
+    ></script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root">
+      <div class="container" id="title-container">
+        <h1 id="title">Monthly Global Land-Surface Temperature</h1>
+      </div>
+      <div class="container" id="graph-container"></div>
+    </div>
+    <script type="text/javascript">
+      let vDataset = {};
+      const cWSvg = 1300,
+        cHSvg = 500,
+        cPaddingLeft = 120,
+        cPaddingBottom = 50;
+
+      const graph = d3
+        .select("#graph-container")
+        .append("svg")
+        .attr("width", cWSvg + cPaddingLeft + 100)
+        .attr("height", cHSvg + cPaddingBottom + 80)
+        .attr("id", "graph");
+
+      fetch(
+        "https://raw.githubusercontent.com/freeCodeCamp/ProjectReferenceData/master/global-temperature.json"
+      )
+        .then((response) => response.json())
+        .then((data) => {
+          vDataset = data;
+        })
+        .then(() => {
+          //data processing
+          let vYear = [],
+            vMonth = [],
+            vTemp = [];
+          vDataset.monthlyVariance.forEach((item) => {
+            vYear.push(new Date(item.year + "-01-01").setHours(0, 0, 0));
+            vMonth.push(
+              new Date(1950 + "-" + item.month + "-01").setHours(0, 0, 0)
+            );
+            vTemp.push(vDataset.baseTemperature + item.variance);
+          });
+
+          const cTempMax = d3.max(vTemp) + 1,
+            cTempMin = d3.min(vTemp) - 1,
+            cYearMin = new Date(d3.min(vYear)),
+            cYearMax = new Date(d3.max(vYear));
+          cYearMax.setYear(cYearMax.getFullYear() + 1);
+
+          const cNumGrade = 7,
+            cColor = [
+              "blue",
+              "rgb(103, 103, 255)",
+              "rgb(164, 164, 224)",
+              "rgb(236, 209, 119)",
+              "rgb(236, 239, 119)",
+              "rgb(236, 142, 119)",
+              "rgb(245, 78, 36)",
+            ],
+            cTempStep = (cTempMax - cTempMin) / cNumGrade;
+
+          const cWBar = (cWSvg / vDataset.monthlyVariance.length) * 12;
+          const cHBar = cHSvg / 12;
+
+          //axis handle
+          const xScale = d3
+            .scaleTime()
+            .domain([cYearMin, cYearMax])
+            .range([0, cWSvg]);
+          const xAxis = d3.axisBottom().scale(xScale);
+          graph
+            .append("g")
+            .call(xAxis.ticks(20))
+            .attr("id", "x-axis")
+            .attr(
+              "transform",
+              `translate(${cPaddingLeft},${cPaddingBottom + cHSvg})`
+            );
+
+          const cMonthMin = new Date(d3.min(vMonth)),
+            cMonthMax = new Date(d3.max(vMonth));
+          cMonthMax.setDate(cMonthMax.getDate() + 30);
+          const yScale = d3
+            .scaleTime()
+            .domain([cMonthMin, cMonthMax])
+            .range([0, cHSvg]);
+          const yAxis = d3.axisLeft().scale(yScale);
+          graph
+            .append("g")
+            .call(yAxis.tickFormat(d3.timeFormat("%B")))
+            .attr("id", "y-axis")
+            .attr("transform", `translate(${cPaddingLeft},${cPaddingBottom})`);
+
+          let tooltip = d3.select("body").append("div").attr("id", "tooltip");
+          //data plotting
+          graph
+            .selectAll("rect")
+            .data(vTemp)
+            .enter()
+            .append("rect")
+            .attr("id", (d, i) => i)
+            .attr("data-year", (d, i) => {
+              return vDataset.monthlyVariance[i].year;
+            })
+            .attr("data-month", (d, i) => {
+              return vDataset.monthlyVariance[i].month - 1;
+            })
+            .attr("fill", (d) => {
+              return cColor[Math.floor((d - cTempMin) / cTempStep)];
+            })
+            .attr("data-temp", (d) => d)
+            .attr("class", "cell")
+            .attr("width", cWBar)
+            .attr("x", (d, i) => Math.floor(i / 12) * cWBar + cPaddingLeft)
+            .attr("y", (d, i) => {
+              return Math.floor(i % 12) * cHBar + cPaddingBottom;
+            })
+            .attr("height", (d, i) => {
+              return cHBar;
+            })
+            .on("mouseover", (d) => {
+              let eGraph = document.getElementById("graph-container");
+              let i = this.event.target.id;
+              tooltip
+                .transition()
+                .duration(50)
+                .style("opacity", 0.9)
+                .style("z-index", 1);
+              tooltip
+                .attr("data-year", (d, i) => {
+                  return this.event.target.attributes["data-year"].value;
+                })
+                .html(
+                  new Date(vYear[i]).getFullYear() +
+                    " - " +
+                    new Date(vMonth[i]).toLocaleString("default", {
+                      month: "long",
+                    }) +
+                    "<br>" +
+                    d.toFixed(2)
+                )
+                .style(
+                  "left",
+                  (d) =>
+                    Math.floor(i / 12) * cWBar +
+                    cPaddingLeft +
+                    eGraph.offsetLeft +
+                    25 +
+                    "px"
+                )
+                .style("top", (d) => {
+                  return (
+                    Math.floor(i % 12) * cHBar +
+                    cPaddingBottom +
+                    eGraph.offsetTop +
+                    "px"
+                  );
+                });
+            })
+            .on("mouseout", (d, i) => {
+              tooltip
+                .transition()
+                .duration(300)
+                .style("opacity", 0)
+                .style("z-index", -1);
+            });
+          //title setting
+          d3.select("div #title-container")
+            .append("div")
+            .attr("id", "description")
+            .append("text")
+            .text(
+              `${cYearMin.getFullYear()}-${cYearMax.getFullYear()}: base temperature: ${
+                vDataset.baseTemperature
+              }℃`
+            );
+          //legend setting
+          const cLegendSize = 30;
+          let legend = d3
+            .select("#graph-container")
+            .append("svg")
+            .attr("id", "legend");
+
+          let cTickValues = [];
+
+          for (let index = 0; index <= 7; index++) {
+            cTickValues.push(
+              ((cTempMax - cTempMin) / cNumGrade) * index + cTempMin
+            );
+          }
+          const cLegendPadding = 20;
+          const xLegendScale = d3
+            .scaleLinear()
+            .domain([cTempMin, cTempMax])
+            .range([0, 7 * cLegendSize]);
+          const xLegendAxis = d3.axisBottom(xLegendScale);
+          legend
+            .selectAll("rect")
+            .data(cColor)
+            .enter()
+            .append("rect")
+            .attr("x", (d, i) => i * cLegendSize + cLegendPadding)
+            .attr("y", cLegendSize)
+            .attr("fill", (d) => d)
+            .attr("width", cLegendSize)
+            .attr("height", cLegendSize);
+          legend
+            .append("g")
+            .call(
+              xLegendAxis.tickValues(cTickValues).tickFormat(d3.format(".2f"))
+            )
+            .attr(
+              "transform",
+              `translate(${cLegendPadding},${cLegendPadding * 3})`
+            );
+        });
+    </script>
+  </body>
+</html>
